@@ -1,10 +1,10 @@
+#pragma once
 
 namespace sudoku {
 
 /** Container for an iterator range */
 template<typename T>
-class span
-{
+class span {
 public:
     span() {
     }

@@ -1,11 +1,52 @@
+#include <chrono>
 #include <iostream>
+#include <random>
 
-#include "sudoku.hpp"
+#include <sudoku.hpp>
 
 using namespace std;
 using namespace sudoku;
 
+struct sudoku_move {
+    int move_num;
+    int move_index;
+};
+
+sudoku_move no_move{
+    .move_num = -1,
+    .move_index = -1
+};
+
+sudoku_move find_next_move(Sudoku const& game, int row, int col, const sudoku_move lastmove) {
+    static std::random_device rng;
+
+    auto cell = game.get(row, col);
+    if (cell.is_invalid()) { return no_move; }
+    
+    auto next_index = lastmove.move_index + 1;
+    if (next_index >= cell.count()) { return no_move; }
+
+    auto digits = cell.possible_digits();
+    return {
+        .move_num = digits[next_index],
+        .move_index = next_index,
+    };
+}
+
+int random_coord() {
+    static std::random_device rng;
+    
+    std::default_random_engine eng{rng()};
+    std::uniform_int_distribution<int> dist{0, 8};
+
+    return dist(eng);
+}
+
+
 int main(int argc, char** argv) {
+/*
+    Sample sudoku board
+
     grid sample{
         4,3,5, 2,6,9, 7,8,1,
         6,8,2, 5,7,1, 4,9,3,
@@ -20,7 +61,104 @@ int main(int argc, char** argv) {
         7,6,3, 4,1,8, 2,5,9};
     Sudoku game{std::move(sample)};
 
+    cout << game << endl; */
+    
+    const auto max_moves = 81 * 5;
+    bool failure_break = false;
+    auto timerstart = std::chrono::high_resolution_clock::now();
+
+    // Empty sudoku board
+    Sudoku game;
+
+    // Make an initial random move to start off
+    auto randX = random_coord();
+    auto randY = random_coord();
+    auto randMove = random_coord() + 1;
+    game.at(randX, randY).reset_to(randMove);
+
+    // Keep track of the total number of moves.
+    int totalMoves = 0;
+
+    // We're done on one of three scenarios:
+    //   1) The game is completed successfully
+    //   2) The total number of moves exceed the maximum allowed
+    //   3) The last cell has exhausted all possibilities
+    auto checkDone = [&](int row, int col) {
+        bool bad_cell = false;
+        if (row >= 0 && col >= 0) {
+            bad_cell = game.at(row, col).is_invalid();
+        }
+        return 
+            game.is_complete() ||
+            totalMoves >= max_moves ||
+            bad_cell;
+    };
+
+    // While we're not marked as done...
+    while (!failure_break || !checkDone(-1, -1)) {
+        int randRow;
+        int randCol;
+
+        // Find the next coordinates with no distinct digit
+        do {
+            randRow = random_coord();
+            randCol = random_coord();
+            ++totalMoves;
+        } while (game.at(randRow, randCol).has_distinct() && !checkDone(randRow, randCol));
+
+        sudoku_move my_move = no_move;
+        recalculate_result recalc_result;
+
+        // While there are still legal moves...
+        do {
+            // Find the next option in the list of possibilities for
+            // the cell at (randRow, randCol)
+            my_move = find_next_move(game, randRow, randCol, my_move);
+            if (my_move.move_num == -1) { // if no legal move
+                // try to backtrack
+                recalc_result = game.backtrack();
+                if (recalc_result.curr_index == -1) {
+                    // break with failure if backtrack is impossible.
+                    failure_break = true;
+                    break;
+                } else {
+                    // otherwise try again for this cell
+                    continue;
+                }
+            }
+
+            // If we have a good move, make the move...
+            //   the game board is recalculated as part of make_move
+            recalc_result = game.make_move(randRow, randCol, my_move.move_num);
+
+            // If the move resulted in an unwinable game
+            if (recalc_result.resulted_in_bad_game) {
+                // Then attempt to backtrack
+                recalc_result = game.backtrack();
+                if (recalc_result.curr_index == -1) {
+                    // break with failure if backtrack is impossible
+                    failure_break = true;
+                    break;
+                }
+            }
+        } while (recalc_result.resulted_in_bad_game);
+
+        if (failure_break) {
+            cout << "Breaking away due to a failure." << endl;
+            break;
+        };
+
+        cout << "Move #" << totalMoves << " put '" << my_move.move_num
+             << "' into (" << randRow+1 << "," << randCol+1 << ")\n";
+        cout << game << endl;
+    }
+    auto timerend = std::chrono::high_resolution_clock::now();
+
     cout << game << endl;
+    if (!game.is_complete()) cout << "Unable to find a solution after ";
+    else cout << "Able to find a solution after ";
+    std::chrono::duration<double> elapsed = timerend - timerstart;
+    cout << elapsed.count() << "s and " << totalMoves << " moves" << endl;
 
     return 0;
 }
