@@ -99,19 +99,23 @@ public:
         };
     }
 
+    /** Return i unless i == except, in which case return -1 */
     static constexpr grid::size_type index_or_skip(grid::size_type i, grid::size_type except) {
         return ((i == except) ? -1 : i);
     }
 
+    /** Build a bogus iterator that represents an end to a grid */
     static grid_iterator end_iter() {
         return std::move(grid_iterator{nullptr, {9, 9, 9, 9, 9, 9, 9, 9, 9}, 9});
     }
 
+    /** Remove possibility 'm' from all cells in a grid_span, 'gspan' */
     static void remove_possibility(grid_span && gspan, int m) {
         std::for_each(gspan.begin(), gspan.end(),
                         [=](auto c) { c.remove_possibility(m); });
     }
 
+    /** Return true if no cells in the grid_span have digit, 'digit' */
     static bool no_single_digit_collision(grid_span && where, int digit) {
         auto same_digit = [&](grid_iterator::value_type const& n) {
             return (n.count() == 1) && ((n.definite_number() - 0x30) == digit);
@@ -119,10 +123,12 @@ public:
         return std::none_of(where.begin(), where.end(), same_digit);
     }
 
+    /** Calculate a 1-D index from a 2-D coordinate */
     static constexpr sudoku::grid::size_type calculate_index(int row, int col) {
         return row * 9 + col;
     }
 
+    /** Return a map of all cell possibility combinations for use in a counter */
     static std::map<std::uint_fast16_t, std::uint32_t> matching_pair_counter() {
         return std::map<std::uint_fast16_t, std::uint32_t>{
             { 0b000000011U, 0 },   // 1, 2

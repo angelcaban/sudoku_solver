@@ -17,14 +17,24 @@ using indices = std::array<grid::size_type, 9>;
 
 /** An iterator for a Sudoku Grid */
 class grid_iterator
+#if defined(__GNUC__)
         : public std::iterator<std::forward_iterator_tag,
                                grid::value_type,
                                grid::difference_type,
                                grid::pointer,
-                               grid::reference> {
+                               grid::reference>
+#endif
+{
     static const uint64_t skip_index = static_cast<uint64_t>(-1);
 
 public:
+#if defined(_WIN32)
+    using iterator_category = std::forward_iterator_tag;
+    using value_type = grid::value_type;
+    using difference_type = grid::difference_type;
+    using pointer = grid::pointer;
+    using reference = grid::reference;
+#endif
 
     grid_iterator(pointer ptr, indices && indices)
         : ptr_{ptr}, indices_{std::move(indices)}, curr_idx_{0} {

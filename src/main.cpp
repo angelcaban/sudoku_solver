@@ -63,7 +63,7 @@ int main(int argc, char** argv) {
 
     cout << game << endl; */
     
-    const auto max_moves = 81 * 5;
+    const auto max_moves = 1000;
     bool failure_break = false;
     auto timerstart = std::chrono::high_resolution_clock::now();
 
@@ -83,19 +83,21 @@ int main(int argc, char** argv) {
     //   1) The game is completed successfully
     //   2) The total number of moves exceed the maximum allowed
     //   3) The last cell has exhausted all possibilities
-    auto checkDone = [&](int row, int col) {
+    auto hit_done_condition = [&](int row, int col) {
         bool bad_cell = false;
         if (row >= 0 && col >= 0) {
             bad_cell = game.at(row, col).is_invalid();
         }
+        bool is_game_complete = game.is_complete();
         return 
-            game.is_complete() ||
+            failure_break ||
+            is_game_complete ||
             totalMoves >= max_moves ||
             bad_cell;
     };
 
     // While we're not marked as done...
-    while (!failure_break || !checkDone(-1, -1)) {
+    while (!hit_done_condition(-1, -1)) {
         int randRow;
         int randCol;
 
@@ -104,7 +106,7 @@ int main(int argc, char** argv) {
             randRow = random_coord();
             randCol = random_coord();
             ++totalMoves;
-        } while (game.at(randRow, randCol).has_distinct() && !checkDone(randRow, randCol));
+        } while (game.at(randRow, randCol).has_distinct() && !hit_done_condition(randRow, randCol));
 
         sudoku_move my_move = no_move;
         recalculate_result recalc_result;
@@ -122,8 +124,8 @@ int main(int argc, char** argv) {
                     failure_break = true;
                     break;
                 } else {
-                    // otherwise try again for this cell
-                    continue;
+                    // otherwise try again
+                    break;
                 }
             }
 
@@ -148,9 +150,9 @@ int main(int argc, char** argv) {
             break;
         };
 
-        cout << "Move #" << totalMoves << " put '" << my_move.move_num
-             << "' into (" << randRow+1 << "," << randCol+1 << ")\n";
-        cout << game << endl;
+        // cout << "Move #" << totalMoves << " put '" << my_move.move_num
+        //      << "' into (" << randRow+1 << "," << randCol+1 << ")\n";
+        // cout << game << endl;
     }
     auto timerend = std::chrono::high_resolution_clock::now();
 

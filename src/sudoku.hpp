@@ -31,12 +31,12 @@ struct recalculate_result {
 class Sudoku {
 public:
     Sudoku() : last_recalculate_result_{false, false, 0} {
-        history_.emplace_back(std::move(grid{}), 0);
+        history_.emplace_back(std::move(grid{}), 0, NO_INDEX);
         recalculate_possibilities();
     }
 
     Sudoku(grid && grid) {
-        history_.emplace_back(std::move(grid), 0);
+        history_.emplace_back(std::move(grid), 0, NO_INDEX);
         recalculate_possibilities();
     }
 
@@ -49,7 +49,7 @@ public:
         recalculate_result result = {
             .made_changes = false,
             .resulted_in_bad_game = false,
-            .curr_index = get_last_recalculate_result().curr_index,
+            .curr_index = last_recalculate_result_.curr_index,
         };
 
         if (history_.size() == 0 ||
@@ -69,8 +69,10 @@ public:
      */
     recalculate_result recalculate_possibilities() {
         grid grid_copy{};
-        auto & curr_node = history_.at(last_recalculate_result_.curr_index);
-        std::copy(curr_node.get_grid().begin(), curr_node.get_grid().end(), grid_copy.begin());
+        auto curr_idx = last_recalculate_result_.curr_index;
+        last_recalculate_result_.made_changes = false;
+        
+        std::copy(current_grid().cbegin(), current_grid().cend(), grid_copy.begin());
 
         // Iterations happens in the original grid_ and
         // recalculated possibilities happen in grid_copy
@@ -82,7 +84,7 @@ public:
             auto cellCol = grid_ops::get_column(col, data(), i);
             auto cellBox = grid_ops::get_inner_box(row, col, data(), i);
 
-            auto remove_possibility = [&](auto c) {
+            auto remove_possibility = [&](auto & c) {
                 if (c.has_distinct()) {
                     grid_copy[i].remove_possibility(c.definite_number() - 0x30);
                 }
@@ -101,54 +103,54 @@ public:
             reset_if_last_possible(cellBox, grid_copy[i]);
         }
 
-        // ~200 Steps
-        bool made_changes = curr_node.get_grid() != grid_copy;
-        if (made_changes) {
-            history_.emplace_back(std::move(grid_copy), history_.size());
-        }
+        if (current_grid() != grid_copy) {
+            auto next_index = history_.size();
+            auto & new_node = history_.emplace_back(std::move(grid_copy), next_index, curr_idx);
+            history_.at(curr_idx).add_branch(next_index);
 
-        last_recalculate_result_ = { 
-            .made_changes = made_changes,
-            .resulted_in_bad_game = is_invalid(),
-            .curr_index = history_.size() - 1,
-        };
+            last_recalculate_result_ = { 
+                .made_changes = true,
+                .resulted_in_bad_game = is_invalid(),
+                .curr_index = next_index,
+            };
+        }
 
         return last_recalculate_result_;
     }
 
-    /** Make a move on the grid. This does not validate move against rules */
+    /** Make a move on the grid & update grid to reflect consequences. */
     recalculate_result make_move(int row, int col, int move) {
         at(row, col).reset_to(move);
 
         // Update possibilities for row, column & box
-        bool made_changes = false;
-        do {
-            made_changes = recalculate_possibilities().made_changes;
-        } while (made_changes);
+        for(; recalculate_possibilities().made_changes; ) {
+        }
 
         return last_recalculate_result_;
     }
 
-    /** Grab a constant pointer to the underlying grid array */
-    grid::const_pointer cdata() const {
-        auto const& curr_node = history_.at(last_recalculate_result_.curr_index);
-        return curr_node.cgrid().data();
-    }
-
-    /** Grab a pointer to the underlying grid array */
-    grid::pointer data() {
-        auto & curr_node = history_.at(last_recalculate_result_.curr_index);
-        return curr_node.get_grid().data();
-    }
-
+    /** Grab the current grid in the history vector */
     grid & current_grid() {
         auto & curr_node = history_.at(last_recalculate_result_.curr_index);
         return curr_node.get_grid();
     }
 
+    /** Grab the current grid in the history vector */
     grid const& current_grid() const {
         auto const& curr_node = history_.at(last_recalculate_result_.curr_index);
         return curr_node.cgrid();
+    }
+
+    /** Grab a constant pointer to the underlying grid array */
+    grid::const_pointer cdata() const {
+        auto const& curr_node = history_.at(last_recalculate_result_.curr_index);
+        return current_grid().data();
+    }
+
+    /** Grab a pointer to the underlying grid array */
+    grid::pointer data() {
+        auto & curr_node = history_.at(last_recalculate_result_.curr_index);
+        return current_grid().data();
     }
 
     /**
@@ -158,8 +160,7 @@ public:
      * @param   col     A column index between 0 and 8
      */
     grid::reference at(int row, int col) {
-        auto & curr_node = history_.at(last_recalculate_result_.curr_index);
-        return curr_node.get_grid().at(grid_ops::calculate_index(row, col));
+        return current_grid().at(grid_ops::calculate_index(row, col));
     }
 
     /**
@@ -169,8 +170,7 @@ public:
      * @param   col     A column index between 0 and 8
      */
     grid::value_type get(int row, int col) const {
-        auto const& curr_node = history_.at(last_recalculate_result_.curr_index);
-        return curr_node.cgrid().at(grid_ops::calculate_index(row, col));
+        return current_grid().at(grid_ops::calculate_index(row, col));
     }
 
     /**
@@ -249,15 +249,18 @@ private:
         return true;
     }
 
-    void remove_pair_collisions(grid_span where, cell & c) {
+    bool remove_pair_collisions(grid_span where, cell & c) {
+        bool changed = false;
         for (int i = 0; i < 9; ++i) {
             if (c.possibility_collides(i) && !no_pair_collision(where, i)) {
+                changed = true;
                 c.remove_possibility(i);
             }
         }
+        return changed;
     }
 
-    void reset_if_last_possible(grid_span where, cell & c) {
+    bool reset_if_last_possible(grid_span where, cell & c) {
         using std::placeholders::_1;
 
         auto is_colliding = [](cell &c, int i) { return c.possibility_collides(i); };
@@ -265,9 +268,10 @@ private:
             if (c.possibility_collides(i) &&
                 std::none_of(where.begin(), where.end(), std::bind(is_colliding, _1, i))) {
                     c.reset_to(i);
-                    return;
+                    return true;
             }
         }
+        return false;
     }
 };
 

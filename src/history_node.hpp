@@ -1,25 +1,33 @@
 #pragma once
 
 #include <vector>
+#include <limits>
 
 #include <grid_iterator.hpp>
 
 namespace sudoku {
 
+constexpr std::size_t NO_INDEX = ULLONG_MAX;
+
 class history_node {
-    std::vector<history_node *> next_branches_;
+
+    std::vector<std::size_t> next_branches_;
     grid this_grid_;
 
-    std::size_t this_grid_index_ = -1;
-    std::size_t prev_grid_index_ = -1;
+    std::size_t this_grid_index_;
+    std::size_t prev_grid_index_;
 
 public:
 
-    history_node() {
+    history_node()
+        : this_grid_index_{NO_INDEX},
+          prev_grid_index_{NO_INDEX} {
     }
 
-    history_node(grid && this_grid, std::size_t this_index)
-        : this_grid_{std::move(this_grid)}, this_grid_index_{this_index} {
+    history_node(grid && this_grid, std::size_t this_index, std::size_t parent_index)
+        : this_grid_{std::move(this_grid)},
+          this_grid_index_{this_index},
+          prev_grid_index_{parent_index} {
     }
 
     grid const& cgrid() const {
@@ -31,7 +39,7 @@ public:
     }
 
     /** The location for this node's parent in the history vector */
-    std::size_t previous_index() const {
+    std::size_t parent_index() const {
         return prev_grid_index_;
     }
 
@@ -41,7 +49,7 @@ public:
     }
 
     bool is_head() const {
-        return prev_grid_index_ == -1;
+        return prev_grid_index_ == NO_INDEX;
     }
 
     bool is_leaf() const {
@@ -52,9 +60,8 @@ public:
         return next_branches_.size() > 1;
     }
 
-    void add_branch(history_node * next) {
-        next->prev_grid_index_ = this_grid_index_;
-        next_branches_.push_back(next);
+    void add_branch(std::size_t child_index) {
+        next_branches_.push_back(child_index);
     }
 };
    
