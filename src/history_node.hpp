@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <limits>
+#include <climits>
 
 #include <grid_iterator.hpp>
 
@@ -36,6 +37,10 @@ public:
 
     grid & get_grid() {
         return this_grid_;
+    }
+
+    void overwrite(grid && g) {
+        this_grid_ = std::move(g);
     }
 
     /** The location for this node's parent in the history vector */

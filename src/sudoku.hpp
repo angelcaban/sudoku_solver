@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include <iostream>
 #include <algorithm>
 #include <array>
 #include <functional>
@@ -26,18 +27,24 @@ struct recalculate_result {
 /**
  * Abstraction for a Sudoku game.
  * Place numbers 1-9 in a 2-D 9-by-9 coordinate system.
- * Check placement against a small set of rules.
+ * Check placement against a set of rules.
  */
 class Sudoku {
 public:
     Sudoku() : last_recalculate_result_{false, false, 0} {
         history_.emplace_back(std::move(grid{}), 0, NO_INDEX);
-        recalculate_possibilities();
+
+        grid temp_grid;
+        std::copy(current_grid().cbegin(), current_grid().cend(), temp_grid.begin());
+        recalculate_possibilities(std::move(temp_grid));
     }
 
-    Sudoku(grid && grid) {
-        history_.emplace_back(std::move(grid), 0, NO_INDEX);
-        recalculate_possibilities();
+    Sudoku(grid && g) : last_recalculate_result_{false, false, 0} {
+        history_.emplace_back(std::move(g), 0, NO_INDEX);
+
+        grid temp_grid;
+        std::copy(current_grid().cbegin(), current_grid().cend(), temp_grid.begin());
+        recalculate_possibilities(std::move(temp_grid));
     }
 
     recalculate_result get_last_recalculate_result() const {
@@ -58,54 +65,77 @@ public:
             return result;
         }
 
-        result.curr_index--;
+        auto parent = history_.at(last_recalculate_result_.curr_index).parent_index();
+        if (parent == NO_INDEX)
+            result.curr_index--;
+        else
+            result.curr_index = parent;
+
         last_recalculate_result_ = result;
         return result;
     }
 
     /**
      * @brief Given the current state of the grid, reclaculate
-     *        each cell's new possibility values.
+     *        each cell's new possibility values. Only update
+     *        this Sudoku's grid if the move was valid.
      */
-    recalculate_result recalculate_possibilities() {
-        grid grid_copy{};
+    recalculate_result recalculate_possibilities(grid && temp_grid) {
         auto curr_idx = last_recalculate_result_.curr_index;
-        last_recalculate_result_.made_changes = false;
-        
-        std::copy(current_grid().cbegin(), current_grid().cend(), grid_copy.begin());
 
-        // Iterations happens in the original grid_ and
-        // recalculated possibilities happen in grid_copy
-        for (int i = 0; i < 9*9; ++i) { // (~7K steps)
-            auto row = i / 9;
-            auto col = i % 9;
+            std::cout << "before: \n" << temp_grid << std::endl;
 
-            auto cellRow = grid_ops::get_row(row, data(), i);
-            auto cellCol = grid_ops::get_column(col, data(), i);
-            auto cellBox = grid_ops::get_inner_box(row, col, data(), i);
+        do {
+            last_recalculate_result_.made_changes = false;
 
-            auto remove_possibility = [&](auto & c) {
-                if (c.has_distinct()) {
-                    grid_copy[i].remove_possibility(c.definite_number() - 0x30);
+            grid grid_copy;
+            std::copy(temp_grid.cbegin(), temp_grid.cend(), grid_copy.begin());
+
+            // Iterations happens in the original grid_ and
+            // recalculated possibilities happen in grid_copy
+            for (int i = 0; i < 9*9; ++i) { // (~7K steps)
+                auto row = i / 9;
+                auto col = i % 9;
+
+                auto cellRow = grid_ops::get_row(row, temp_grid.data(), i);
+                auto cellCol = grid_ops::get_column(col, temp_grid.data(), i);
+                auto cellBox = grid_ops::get_inner_box(row, col, temp_grid.data(), i);
+
+                auto remove_possibility = [&](auto & c) {
+                    if (c.has_distinct()) {
+                        grid_copy[i].remove_possibility(c.definite_number() - 0x30);
+                    }
+                };
+
+                std::for_each(cellRow.begin(), cellRow.end(), remove_possibility);
+                std::for_each(cellCol.begin(), cellCol.end(), remove_possibility);
+                std::for_each(cellBox.begin(), cellBox.end(), remove_possibility);
+
+                grid_ops::remove_pair_collisions(cellRow, grid_copy[i]);
+                grid_ops::remove_pair_collisions(cellCol, grid_copy[i]);
+                grid_ops::remove_pair_collisions(cellBox, grid_copy[i]);
+
+                grid_ops::reset_if_last_possible(cellRow, grid_copy[i]);
+                grid_ops::reset_if_last_possible(cellCol, grid_copy[i]);
+                grid_ops::reset_if_last_possible(cellBox, grid_copy[i]);
+            }
+
+            std::cout << "after: \n" << grid_copy << std::endl;
+
+            if (temp_grid != grid_copy) {
+                last_recalculate_result_.made_changes = true;
+                if (grid_ops::is_grid_invalid(grid_copy)) {
+                    // Don't try pushing back the results if this move was invalid
+                    last_recalculate_result_.resulted_in_bad_game = true;
+                    return last_recalculate_result_;
                 }
-            };
+                temp_grid = std::move(grid_copy);
+            }
+        } while (last_recalculate_result_.made_changes);
 
-            std::for_each(cellRow.begin(), cellRow.end(), remove_possibility);
-            std::for_each(cellCol.begin(), cellCol.end(), remove_possibility);
-            std::for_each(cellBox.begin(), cellBox.end(), remove_possibility);
-
-            remove_pair_collisions(cellRow, grid_copy[i]);
-            remove_pair_collisions(cellCol, grid_copy[i]);
-            remove_pair_collisions(cellBox, grid_copy[i]);
-
-            reset_if_last_possible(cellRow, grid_copy[i]);
-            reset_if_last_possible(cellCol, grid_copy[i]);
-            reset_if_last_possible(cellBox, grid_copy[i]);
-        }
-
-        if (current_grid() != grid_copy) {
+        if (current_grid() != temp_grid) {
             auto next_index = history_.size();
-            auto & new_node = history_.emplace_back(std::move(grid_copy), next_index, curr_idx);
+            auto & new_node = history_.emplace_back(std::move(temp_grid), next_index, curr_idx);
             history_.at(curr_idx).add_branch(next_index);
 
             last_recalculate_result_ = { 
@@ -118,15 +148,19 @@ public:
         return last_recalculate_result_;
     }
 
-    /** Make a move on the grid & update grid to reflect consequences. */
-    recalculate_result make_move(int row, int col, int move) {
-        at(row, col).reset_to(move);
+    /**
+     * @brief Try to make a move on the grid. This method calculates whether
+     *        or not the move is valid and returns a structure with the result.
+     *        If the move is valid, it is stored as part of the move history.
+     */
+    recalculate_result try_move(int row, int col, int move) {
+        grid temp_grid;
+        std::copy(current_grid().cbegin(), current_grid().cend(), temp_grid.begin());
+        temp_grid.at(grid_ops::calculate_index(row, col)).reset_to(move);
 
         // Update possibilities for row, column & box
-        for(; recalculate_possibilities().made_changes; ) {
-        }
-
-        return last_recalculate_result_;
+        
+        return recalculate_possibilities(std::move(temp_grid));
     }
 
     /** Grab the current grid in the history vector */
@@ -205,74 +239,17 @@ public:
 
     /** Retrurn true if any cell has no possibility */
     bool is_invalid() const {
-        return std::any_of(current_grid().cbegin(), current_grid().cend(), [](auto & c) {
-            return c.count() == 0;
-        });
+        return grid_ops::is_grid_invalid(current_grid());
     }
 
-    friend std::ostream & operator<<(std::ostream & os, Sudoku & game) {
-        os << "--------+-------+--------\n";
-        for (int r = 0; r < 9; ++r) {
-            os << "| ";
-            for (int c = 0; c < 9; ++c) {
-                bool third = ((c + 1) % 3) != 0;
-                os << game.get(r, c) << ((third) ? " " : " | ");
-            }
-            os << '\n';
-            if (((r + 1) % 3) == 0)
-                os << "--------+-------+--------\n";
-        }
+    friend std::ostream & operator<<(std::ostream & os, Sudoku const& game) {
+        os << game.current_grid();
         return os;
     }
 
 private:
     std::vector<history_node> history_;
     recalculate_result last_recalculate_result_;
-
-    bool no_pair_collision(grid_span where, int digit) {
-        auto pair_counts = grid_ops::matching_pair_counter();
-        auto only_two_possible = [](cell const& c) { return c.count() == 2; };
-        auto onlytwos = std::find_if(where.begin(), where.end(), only_two_possible);;
-        
-        while (onlytwos != where.end()) {
-            auto possible = onlytwos->get_possibilities();
-            pair_counts.at(possible)++;
-
-            if (pair_counts.at(possible) >= 2 && onlytwos->possibility_collides(digit)) {
-                return false;
-            }
-            ++onlytwos;
-
-            onlytwos = std::find_if(onlytwos, where.end(), only_two_possible);
-        }
-
-        return true;
-    }
-
-    bool remove_pair_collisions(grid_span where, cell & c) {
-        bool changed = false;
-        for (int i = 0; i < 9; ++i) {
-            if (c.possibility_collides(i) && !no_pair_collision(where, i)) {
-                changed = true;
-                c.remove_possibility(i);
-            }
-        }
-        return changed;
-    }
-
-    bool reset_if_last_possible(grid_span where, cell & c) {
-        using std::placeholders::_1;
-
-        auto is_colliding = [](cell &c, int i) { return c.possibility_collides(i); };
-        for (int i = 0; i < 9; ++i) {
-            if (c.possibility_collides(i) &&
-                std::none_of(where.begin(), where.end(), std::bind(is_colliding, _1, i))) {
-                    c.reset_to(i);
-                    return true;
-            }
-        }
-        return false;
-    }
 };
 
 } // namespace sudoku 

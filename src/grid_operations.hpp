@@ -24,12 +24,123 @@ namespace sudoku {
 class grid_ops {
 public:
 
-    /**
-     * @brief Get a range that describes a given column
-     * 
-     * @param   c       A column index between 0 and 8
-     */
-    static grid_span get_column(int c, grid::pointer ptr, grid::size_type except = -1) {
+    static bool has_collisions(grid_span const& where) {
+        std::array<int, 9> digit_count{0, 0, 0, 0, 0, 0, 0, 0, 0};
+        auto add_distinct_collision = [&](cell const& c, int digit) {
+            digit_count[digit - 1] +=
+                (c.has_distinct() && c.possibility_collides(digit)) ? 1 : 0;
+        };
+
+        auto curr = where.cbegin();
+        while (curr != where.cend()) {
+            add_distinct_collision(*curr, 1);
+            add_distinct_collision(*curr, 2);
+            add_distinct_collision(*curr, 3);
+            add_distinct_collision(*curr, 4);
+            add_distinct_collision(*curr, 5);
+            add_distinct_collision(*curr, 6);
+            add_distinct_collision(*curr, 7);
+            add_distinct_collision(*curr, 8);
+            add_distinct_collision(*curr, 9);
+            ++curr;
+        }
+
+        return std::any_of(digit_count.begin(), digit_count.end(), [](auto c) { return c > 1; });
+    }
+
+    static bool is_grid_invalid(grid const& g) {
+        auto invalid = std::any_of(g.cbegin(), g.cend(), [](auto & c) {
+            return c.is_invalid();
+        });
+
+        // Check for doubles in inner boxes
+        if (!invalid) {
+            invalid = invalid || has_collisions(grid_ops::get_inner_box(0, 0, g.data()));
+            invalid = invalid || has_collisions(grid_ops::get_inner_box(3, 0, g.data()));
+            invalid = invalid || has_collisions(grid_ops::get_inner_box(6, 0, g.data()));
+            invalid = invalid || has_collisions(grid_ops::get_inner_box(0, 3, g.data()));
+            invalid = invalid || has_collisions(grid_ops::get_inner_box(3, 3, g.data()));
+            invalid = invalid || has_collisions(grid_ops::get_inner_box(6, 3, g.data()));
+            invalid = invalid || has_collisions(grid_ops::get_inner_box(0, 6, g.data()));
+            invalid = invalid || has_collisions(grid_ops::get_inner_box(3, 6, g.data()));
+            invalid = invalid || has_collisions(grid_ops::get_inner_box(6, 6, g.data()));
+        }
+
+        // Check for doubles in rows & columns
+        if (!invalid) {
+            for (int i = 0; (i < 9) && (!invalid); ++i) {
+                auto ithRow = grid_ops::get_row(i, g.data());
+                auto ithCol = grid_ops::get_column(i, g.data());
+                invalid = has_collisions(ithRow) || has_collisions(ithCol);
+            }
+        }
+
+        return invalid;
+    }
+
+    /** Is the number of possibilities reduced to 2 */
+    static bool only_two_possible(cell const& c) {
+        return c.count() == 2;
+    }
+
+    /** Find cells that have only two possibilities */
+    template<typename Iter>
+    static grid_iterator find_only_twos(Iter begin, Iter end) {
+        return std::find_if(begin, end, only_two_possible);
+    }
+
+    /** Return true if `digit` does not collide with pairs in `where` */
+    static bool no_pair_collision(grid_span const& where, int digit) {
+        auto pair_counts = grid_ops::matching_pair_counter();
+        auto onlytwos = find_only_twos(where.cbegin(), where.cend());
+
+        for (; onlytwos != where.cend();
+                onlytwos = find_only_twos(onlytwos, where.cend())) {
+            auto key = onlytwos->get_possibilities();
+            pair_counts.at(key)++;
+
+            if (pair_counts.at(key) >= 2 && onlytwos->possibility_collides(digit)) {
+                return false;
+            }
+            ++onlytwos;
+        }
+
+        return true;
+    }
+
+    /** If cell `c` contains a possibility that no other cell in
+     *  `where` has, then reset it to that digit */
+    static bool reset_if_last_possible(grid_span where, cell & c) {
+        using std::placeholders::_1;
+
+        auto is_colliding = [](cell const& other_cell, int i) {
+            return other_cell.possibility_collides(i);
+        };
+        for (int i = 1; i <= 9; ++i) {
+            if (c.possibility_collides(i) &&
+                std::none_of(where.begin(), where.end(), std::bind(is_colliding, _1, i))) {
+                    c.reset_to(i);
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    /** If there exists possible pairs in `where` and `c` has either of
+     *  them as possibilities, then remove the possibility from `c` */
+    static bool remove_pair_collisions(grid_span const& where, cell & c) {
+        bool changed = false;
+        for (int i = 0; i < 9; ++i) {
+            if (c.possibility_collides(i) && !no_pair_collision(where, i)) {
+                changed = true;
+                c.remove_possibility(i);
+            }
+        }
+        return changed;
+    }
+
+    /** Get a range that describes a given column, given `c` between 0 and 8 */
+    static grid_span get_column(int c, grid::const_pointer ptr, grid::size_type except = -1) {
         auto s = calculate_index(0, c);
         indices indices = {
             index_or_skip(s, except),
@@ -48,12 +159,8 @@ public:
         };
     }
 
-    /**
-     * @brief Get a range that describes a given row
-     *
-     * @param   r       A row index between 0 and 8
-     */
-    static grid_span get_row(int r, grid::pointer ptr, grid::size_type except = -1) {
+    /** Get a range that describes a given row, given `r` between 0 and 8 */
+    static grid_span get_row(int r, grid::const_pointer ptr, grid::size_type except = -1) {
         auto s = calculate_index(r, 0);
         indices indices = {
             index_or_skip(s, except),
@@ -72,13 +179,9 @@ public:
         };
     }
 
-    /**
-     * @brief Get a range that describes a given inner box
-     *
-     * @param   r     A row index between 0 and 8
-     * @param   c     A column index between 0 and 8
-     */
-    static grid_span get_inner_box(int r, int c, grid::pointer ptr, grid::size_type except = -1) {
+    /** Get a range that describes a given inner box, given `r` & `c`
+     *  are between 0 and 8 */
+    static grid_span get_inner_box(int r, int c, grid::const_pointer ptr, grid::size_type except = -1) {
         int sRow = 3 * (r / 3);
         int sCol = 3 * (c / 3);
         auto s = calculate_index(sRow, sCol);
@@ -170,5 +273,22 @@ public:
         };
     }
 };
+
+
+std::ostream & operator<<(std::ostream & os, sudoku::grid const& g) {
+    os << "--------+-------+--------\n";
+    for (int r = 0; r < 9; ++r) {
+        os << "| ";
+        for (int c = 0; c < 9; ++c) {
+            bool third = ((c + 1) % 3) != 0;
+            auto const& cell = g.at(grid_ops::calculate_index(r, c));
+            os << cell << ((third) ? " " : " | ");
+        }
+        os << '\n';
+        if (((r + 1) % 3) == 0)
+            os << "--------+-------+--------\n";
+    }
+    return os;
+}
 
 } // namespace sudoku

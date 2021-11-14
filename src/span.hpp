@@ -22,6 +22,14 @@ public:
         return end_;
     }
 
+    T const& cbegin() const {
+        return begin_;
+    }
+
+    T const& cend() const {
+        return end_;
+    }
+
 private:
     T begin_;
     T end_;

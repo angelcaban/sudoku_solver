@@ -14,6 +14,8 @@ include_directories(
 
 add_executable(test_sudoku_moves test_sudoku_moves.cpp)
 add_executable(test_sudoku_iterator test_sudoku_iterator.cpp)
+add_executable(test_sudoku_game test_sudoku_fullgame.cpp)
 
 add_test(iterator_tests test_sudoku_iterator)
 add_test(sudoku_moves test_sudoku_moves)
+add_test(sudoku_game test_sudoku_game)

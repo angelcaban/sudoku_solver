@@ -42,6 +42,7 @@ int random_coord() {
     return dist(eng);
 }
 
+#define C sudoku::cell{}
 
 int main(int argc, char** argv) {
 /*
@@ -131,18 +132,7 @@ int main(int argc, char** argv) {
 
             // If we have a good move, make the move...
             //   the game board is recalculated as part of make_move
-            recalc_result = game.make_move(randRow, randCol, my_move.move_num);
-
-            // If the move resulted in an unwinable game
-            if (recalc_result.resulted_in_bad_game) {
-                // Then attempt to backtrack
-                recalc_result = game.backtrack();
-                if (recalc_result.curr_index == -1) {
-                    // break with failure if backtrack is impossible
-                    failure_break = true;
-                    break;
-                }
-            }
+            recalc_result = game.try_move(randRow, randCol, my_move.move_num);
         } while (recalc_result.resulted_in_bad_game);
 
         if (failure_break) {

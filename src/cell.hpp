@@ -104,7 +104,7 @@ public:
     }
 
     /** Return true if digit is one of this cell's possibilities, otherwise false */
-    bool possibility_collides(int digit) {
+    bool possibility_collides(int digit) const {
         return 0 != ((possibilities_ >> (digit - 1)) & 0x1);
     }
 

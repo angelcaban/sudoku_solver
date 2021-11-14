@@ -95,7 +95,9 @@ BOOST_AUTO_TEST_CASE(test_sudoku_recalculate_possibilities) {
           C, 1, 2, 3, 4, 5, 6, 7, C }
     };
 
-    subject.recalculate_possibilities();
+    sudoku::grid temp_grid;
+    std::copy(subject.current_grid().cbegin(), subject.current_grid().cend(), temp_grid.begin());
+    subject.recalculate_possibilities(std::move(temp_grid));
 
     test_distinct_cell(subject, 0, 0, '1');
     test_distinct_cell(subject, 0, 1, '2');
@@ -147,7 +149,7 @@ BOOST_AUTO_TEST_CASE(test_sudoku_make_move) {
           C, 1, 2, 3, 4, 5, 6, 7, C }
     };
 
-    subject.make_move(0, 0, 2);
+    subject.try_move(0, 0, 2);
     BOOST_TEST('X' == subject.at(0, 0).definite_number());
     BOOST_TEST('X' == subject.at(0, 1).definite_number());
     BOOST_TEST('3' == subject.at(0, 2).definite_number());
@@ -170,7 +172,7 @@ BOOST_AUTO_TEST_CASE(test_sudoku_make_move) {
           6, 7, 8, 9, 1, C, 3, 4, 5,
           C, 1, 2, 3, 4, 5, 6, 7, C }
     };
-    subject.make_move(0, 0, 1);
+    subject.try_move(0, 0, 1);
     BOOST_TEST('1' == subject.at(0, 0).definite_number());
     BOOST_TEST('2' == subject.at(0, 1).definite_number());
     BOOST_TEST('3' == subject.at(0, 2).definite_number());

@@ -36,24 +36,24 @@ public:
     using reference = grid::reference;
 #endif
 
-    grid_iterator(pointer ptr, indices && indices)
+    grid_iterator(grid::const_pointer ptr, indices && indices)
         : ptr_{ptr}, indices_{std::move(indices)}, curr_idx_{0} {
     }
 
-    grid_iterator(pointer ptr, indices && indices, int idx)
+    grid_iterator(grid::const_pointer ptr, indices && indices, int idx)
         : ptr_{ptr}, indices_{std::move(indices)}, curr_idx_{idx} {
     }
 
-    pointer operator->() {
+    grid::const_pointer operator->() {
         // Skip over -1 values
         while (curr_idx_ < 9 && indices_[curr_idx_] == skip_index) { curr_idx_++; }
-        return &(ptr_[indices_[curr_idx_]]);
+        return &ptr_[indices_[curr_idx_]];
     }
 
-    reference operator*() {
+    grid::const_reference operator*() {
         // Skip over -1 values
         while (curr_idx_ < 9 && indices_[curr_idx_] == skip_index) { curr_idx_++; }
-        return ptr_[indices_[curr_idx_]];
+        return (ptr_)[indices_[curr_idx_]];
     }
 
     grid_iterator& operator++() {
@@ -80,7 +80,7 @@ public:
     }
 
 private:
-    pointer ptr_;
+    grid::const_pointer ptr_;
     indices indices_;
     int curr_idx_;
 };
