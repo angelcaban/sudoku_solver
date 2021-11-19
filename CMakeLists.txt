@@ -7,19 +7,18 @@ else()
     add_compile_options(-std=gnu++20)
 endif()
 
-enable_testing()
-
 get_filename_component(SRC_DIR ./src ABSOLUTE)
-
-add_subdirectory(tests)
-
-set(CMAKE_SOURCE_DIR src)
-
-find_package(Boost REQUIRED)
-
+find_package(Boost REQUIRED COMPONENTS program_options)
 include_directories(
     ${SRC_DIR}
     ${Boost_INCLUDE_DIRS}
 )
 
+enable_testing()
+
+add_subdirectory(tests)
+
+set(CMAKE_SOURCE_DIR src)
+
 add_executable(sudoku src/main.cpp)
+target_link_libraries(sudoku ${Boost_LIBRARIES})

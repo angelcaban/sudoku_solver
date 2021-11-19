@@ -1,172 +1,150 @@
+/*
+ * Sudoku Solver
+ * Copyright (C) 2021 Angel Caban
+ * 
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+#include <algorithm>
+#include <cctype>
 #include <chrono>
+#include <sstream>
 #include <iostream>
+#include <fstream>
 #include <random>
-#include <sudoku.hpp>
+
+#include <boost/algorithm/string.hpp>
+#include <boost/program_options/parsers.hpp>
+#include <boost/program_options/variables_map.hpp>
+
+#include <solver.hpp>
 
 using namespace std;
 using namespace sudoku;
+namespace po = boost::program_options;
 
-struct sudoku_move {
-  int move_num;
-  int move_index;
-};
-
-sudoku_move no_move{.move_num = -1, .move_index = -1};
-
-sudoku_move find_next_move(Sudoku const& game, int row, int col,
-                           const sudoku_move lastmove) {
-  static std::random_device rng;
-
-  auto cell = game.get(row, col);
-  if (cell.is_invalid()) {
-    return no_move;
-  }
-
-  auto next_index = lastmove.move_index + 1;
-  if (next_index >= cell.count()) {
-    return no_move;
-  }
-
-  auto digits = cell.possible_digits();
-  return {
-      .move_num = digits[next_index],
-      .move_index = next_index,
-  };
+cell cell_from_char(char c) {
+  return std::move((c != '\0') ? cell{static_cast<uint64_t>(c - 0x30)} : C);
 }
 
-int random_coord() {
-  static std::random_device rng;
+int single_line_data(string& in_data, array<cell, 9*9> & user_grid) {
+  char lastc = '\0';
+  int i = 0;
 
-  std::default_random_engine eng{rng()};
-  std::uniform_int_distribution<int> dist{0, 8};
-
-  return dist(eng);
+  in_data.erase(remove_if(in_data.begin(), in_data.end(), ::isspace), in_data.end());
+  for_each(in_data.cbegin(), in_data.cend(), [&](auto && c) {
+    if (c == ',') {
+      user_grid[i++] = cell_from_char(lastc);
+      lastc = '\0';
+    } else {
+      lastc = c;
+    }
+  });
+  
+  user_grid[i++] = cell_from_char(lastc);
+  return i;
 }
 
-#define C \
-  sudoku::cell {}
+int file_data(istream& instream, array<cell, 9*9> & user_grid) {
+  string line;
+  int i = 0;
+  char lastc = '\0';
+
+  while (getline(instream, line)) {
+    line.erase(remove_if(line.begin(), line.end(), ::isspace), line.end());
+
+    for_each(line.cbegin(), line.cend(), [&](auto && c) {
+      if (c == ',') {
+        user_grid[i++] = cell_from_char(lastc);
+        lastc = '\0';
+      } else {
+        lastc = c;
+      }
+    });
+  }
+
+  user_grid[i++] = cell_from_char(lastc);
+  return i;
+}
+
+void parse_options(array<cell, 9*9> & user_grid, int argc, char ** argv) {
+  po::options_description desc("Valid Options");
+  desc.add_options()
+    ("help", "Help Message")
+    ("data", po::value<string>(), "Comma-separated list of 81 digits (1 to 9) or spaces, or @filename to read from a file");
+  
+  po::variables_map vm;
+  po::store(po::parse_command_line(argc, argv, desc), vm);
+  po::notify(vm);
+
+  if (vm.count("help")) {
+    cout << "sudoku_solver  Copyright (C) 2021  Angel Caban\n"
+            "This program comes with ABSOLUTELY NO WARRANT.\n"
+            "This is free software, and you are welcome to redistribute it\n"
+            "under certain conditions. <https://www.gnu.org/licenses/gpl-3.0.en.html>\n\n";
+    cout << desc << "\n";
+    exit(1);
+  }
+
+  if (vm.count("data")) {
+    auto in_data = vm["data"].as<string>();
+    if (in_data[0] == '@') {
+      ifstream instream{in_data.substr(1)};
+      if (!instream.is_open()) {
+        cout << "Unable to open '" << in_data.substr(1) << "'\n";
+        exit(3);
+      }
+      if (file_data(instream, user_grid) != 81) {
+        cout << "File must contain 81 comma deliminated digits or spaces.\n";
+        exit(2);
+      }
+    }
+    else if (single_line_data(in_data, user_grid) != 81) {
+      cout << "Please provide 81 comma delimiated digits or spaces after the --data option\n";
+      exit(4);
+    }
+  }
+  else {
+    cout << "Attempting to read from stdin...\n";
+    if (file_data(cin, user_grid) != 81) {
+      cout << "Data must contain 81 comma deliminated digits or spaces.\n";
+      exit(5);
+    }
+  }
+}
 
 int main(int argc, char** argv) {
-  /*
-      Sample sudoku board
-
-      grid sample{
-          4,3,5, 2,6,9, 7,8,1,
-          6,8,2, 5,7,1, 4,9,3,
-          1,9,7, 8,3,4, 5,6,2,
-
-          8,2,6, 1,9,5, 3,4,7,
-          3,7,4, 6,8,2, 9,1,5,
-          9,5,1, 7,4,3, 6,2,8,
-
-          5,1,9, 3,2,6, 8,7,4,
-          2,4,8, 9,5,7, 1,3,6,
-          7,6,3, 4,1,8, 2,5,9};
-      Sudoku game{std::move(sample)};
-
-      cout << game << endl; */
-
   const auto max_moves = 1000;
-  bool failure_break = false;
+  array<cell, 9*9> user_grid;
+  parse_options(user_grid, argc, argv);
+
   auto timerstart = std::chrono::high_resolution_clock::now();
 
-  // clang-format off
-  // Empty sudoku board
-  Sudoku game{{
-    C,C,2, C,8,C, 6,4,C,
-    5,C,C, 9,C,C, C,C,C,
-    C,C,C, C,C,C, C,C,3,
+  Sudoku game{std::move(user_grid)};
+  Solver my_solver{max_moves};
 
-    C,C,C, C,C,C, 1,C,C,
-    C,C,6, C,4,C, 8,7,C,
-    C,2,C, C,C,6, C,C,C,
-
-    C,C,7, C,C,C, C,C,1,
-    C,C,C, C,3,C, C,C,2,
-    C,9,C, 8,C,C, 7,3,C
-  }};
-  // clang-format on
-
-  // Make an initial random move to start off
-  // auto randX = random_coord();
-  // auto randY = random_coord();
-  // auto randMove = random_coord() + 1;
-  // game.at(randX, randY).reset_to(randMove);
-
-  // Keep track of the total number of moves.
-  int totalMoves = 0;
-
-  // We're done on one of three scenarios:
-  //   1) The game is completed successfully
-  //   2) The total number of moves exceed the maximum allowed
-  //   3) The last cell has exhausted all possibilities
-  auto hit_done_condition = [&](int row, int col) {
-    bool bad_cell = false;
-    if (row >= 0 && col >= 0) {
-      bad_cell = game.at(row, col).is_invalid();
-    }
-    bool is_game_complete = game.is_complete();
-    return failure_break || is_game_complete || totalMoves >= max_moves ||
-           bad_cell;
-  };
-
-  // While we're not marked as done...
-  while (!hit_done_condition(-1, -1)) {
-    int randRow;
-    int randCol;
-
-    // Find the next coordinates with no distinct digit
-    do {
-      randRow = random_coord();
-      randCol = random_coord();
-      ++totalMoves;
-    } while (game.at(randRow, randCol).has_distinct() &&
-             !hit_done_condition(randRow, randCol));
-
-    sudoku_move my_move = no_move;
-    recalculate_result recalc_result;
-
-    // While there are still legal moves...
-    do {
-      // Find the next option in the list of possibilities for
-      // the cell at (randRow, randCol)
-      my_move = find_next_move(game, randRow, randCol, my_move);
-      if (my_move.move_num == -1) {  // if no legal move
-        // try to backtrack
-        recalc_result = game.backtrack();
-        if (recalc_result.curr_index == -1) {
-          // break with failure if backtrack is impossible.
-          failure_break = true;
-          break;
-        } else {
-          // otherwise try again
-          break;
-        }
-      }
-
-      // If we have a good move, make the move...
-      //   the game board is recalculated as part of make_move
-      recalc_result = game.try_move(randRow, randCol, my_move.move_num);
-    } while (recalc_result.resulted_in_bad_game);
-
-    if (failure_break) {
-      cout << "Breaking away due to a failure." << endl;
-      break;
-    };
-
-    // cout << "Move #" << totalMoves << " put '" << my_move.move_num
-    //      << "' into (" << randRow+1 << "," << randCol+1 << ")\n";
-    // cout << game << endl;
-  }
+  auto is_success = my_solver.solve(game);
   auto timerend = std::chrono::high_resolution_clock::now();
 
   cout << game << endl;
-  if (!game.is_complete())
-    cout << "Unable to find a solution after ";
-  else
+  if (is_success)
     cout << "Able to find a solution after ";
+  else
+    cout << "Unable to find a solution after ";
+
   std::chrono::duration<double> elapsed = timerend - timerstart;
-  cout << elapsed.count() << "s and " << totalMoves << " moves" << endl;
+  cout << elapsed.count() << "s and " << my_solver.get_moves() << " moves" << endl;
 
   return 0;
 }
