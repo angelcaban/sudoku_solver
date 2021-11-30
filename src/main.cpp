@@ -35,46 +35,36 @@ using namespace sudoku;
 namespace po = boost::program_options;
 
 cell cell_from_char(char c) {
-  return std::move((c != '\0') ? cell{static_cast<uint64_t>(c - 0x30)} : C);
+  return (c >= '1' && c <= '9') ? cell{static_cast<uint64_t>(c - 0x30)} : C;
 }
 
-int single_line_data(string& in_data, array<cell, 9*9> & user_grid) {
+int read_line(string& in_data, array<cell, 9*9> & user_grid, int next_i) {
   char lastc = '\0';
-  int i = 0;
-
-  in_data.erase(remove_if(in_data.begin(), in_data.end(), ::isspace), in_data.end());
-  for_each(in_data.cbegin(), in_data.cend(), [&](auto && c) {
+  for (auto && c : in_data) {
     if (c == ',') {
-      user_grid[i++] = cell_from_char(lastc);
+      user_grid[next_i++] = cell_from_char(lastc);
       lastc = '\0';
     } else {
       lastc = c;
     }
-  });
-  
-  user_grid[i++] = cell_from_char(lastc);
-  return i;
+  }
+  if (in_data.back() != ',')
+    user_grid[next_i++] = cell_from_char(lastc);
+  return next_i;
+}
+
+int single_line_data(string& in_data, array<cell, 9*9> & user_grid) {
+  return read_line(in_data, user_grid, 0);
 }
 
 int file_data(istream& instream, array<cell, 9*9> & user_grid) {
   string line;
   int i = 0;
-  char lastc = '\0';
-
   while (getline(instream, line)) {
     line.erase(remove_if(line.begin(), line.end(), ::isspace), line.end());
-
-    for_each(line.cbegin(), line.cend(), [&](auto && c) {
-      if (c == ',') {
-        user_grid[i++] = cell_from_char(lastc);
-        lastc = '\0';
-      } else {
-        lastc = c;
-      }
-    });
+    if (line.empty()) continue;
+    i = read_line(line, user_grid, i);
   }
-
-  user_grid[i++] = cell_from_char(lastc);
   return i;
 }
 
