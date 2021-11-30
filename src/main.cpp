@@ -80,7 +80,7 @@ void parse_options(array<cell, 9*9> & user_grid, int argc, char ** argv) {
 
   if (vm.count("help")) {
     cout << "sudoku_solver  Copyright (C) 2021  Angel Caban\n"
-            "This program comes with ABSOLUTELY NO WARRANT.\n"
+            "This program comes with ABSOLUTELY NO WARRANTY.\n"
             "This is free software, and you are welcome to redistribute it\n"
             "under certain conditions. <https://www.gnu.org/licenses/gpl-3.0.en.html>\n\n";
     cout << desc << "\n";
